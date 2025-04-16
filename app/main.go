@@ -21,14 +21,19 @@ func main() {
 			log.Fatal("Error reading command")
 		}
 
+		fmt.Println(command)
+
 		commandParts := strings.Split(command, " ")
 
 		if commandParts[0] == "exit" {
 			i, _ := strconv.Atoi(commandParts[1])
 			os.Exit(i)
+		} else if commandParts[0] == "echo" {
+			echoString := strings.Join(commandParts[1:], " ")
+			fmt.Println(strings.TrimSuffix(echoString, "\n"))
+		} else {
+			fmt.Println(command[:len(command)-1] + ": command not found")
 		}
-
-		fmt.Println(command[:len(command)-1] + ": command not found")
 	}
 
 }
