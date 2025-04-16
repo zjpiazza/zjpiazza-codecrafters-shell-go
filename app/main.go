@@ -21,8 +21,6 @@ func main() {
 			log.Fatal("Error reading command")
 		}
 
-		fmt.Println(command)
-
 		commandParts := strings.Split(command, " ")
 
 		if commandParts[0] == "exit" {
