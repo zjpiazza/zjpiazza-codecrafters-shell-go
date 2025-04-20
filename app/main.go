@@ -3,70 +3,143 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
-	"slices"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 )
 
-// Ensures gofmt doesn't remove the "fmt" import in stage 1 (feel free to remove this!)
-var _ = fmt.Fprint
+var TYPE = [...]string{"echo", "type", "exit", "cd"}
 
 func main() {
-	commands := []string{"exit", "echo", "type"}
 	for {
-		fmt.Fprint(os.Stdout, "$ ")
+		_, _ = fmt.Fprint(os.Stdout, "$ ")
+		// Wait for user input
 		command, err := bufio.NewReader(os.Stdin).ReadString('\n')
-
 		if err != nil {
-			log.Fatal("Error reading command")
+			_, _ = fmt.Fprintln(os.Stderr, err)
 		}
-
-		commandParts := strings.Split(command, " ")
-
-		if commandParts[0] == "exit" {
-			i, _ := strconv.Atoi(commandParts[1])
-			os.Exit(i)
-		} else if commandParts[0] == "echo" {
-			echoString := strings.Join(commandParts[1:], " ")
-			fmt.Println(strings.TrimSuffix(echoString, "\n"))
-		} else if commandParts[0] == "type" {
-			// Check for builtin commands
-			var builtin bool
-			var executable string
-			arg := strings.TrimSuffix(commandParts[1], "\n")
-			if slices.Contains(commands, arg) {
-				builtin = true
+		command = strings.TrimSpace(command)
+		programArgs := strings.Split(command, " ")
+		program := programArgs[0]
+		programArgs = programArgs[1:]
+		parseCommand(program, programArgs)
+	}
+}
+func parseCommand(command string, args []string) {
+	switch command {
+	case "echo":
+		echo(args)
+	case "cd":
+	case "exit":
+		exit(args)
+	case "type":
+		typeCommand(args)
+	default:
+		execCommandInPath(command, args)
+	}
+}
+func execCommandInPath(command string, args []string) {
+	var pathDelimiter string
+	if runtime.GOOS == "windows" {
+		pathDelimiter = ";"
+	} else {
+		pathDelimiter = ":"
+	}
+	pathsEnv := os.Getenv("PATH")
+	paths := strings.Split(pathsEnv, pathDelimiter)
+	for _, path := range paths {
+		dir, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		defer dir.Close()
+		files, err := dir.Readdir(-1)
+		if err != nil {
+			continue
+		}
+		for _, file := range files {
+			if file.IsDir() {
+				continue
 			}
-
-			// Check for executables in path
-			// 1. Get PATH environment variable
-			path := os.Getenv("PATH")
-			// 2. Break string into directories
-			directories := strings.Split(path, ":")
-			// 3. Iterate over each directory in the path and search for argument
-			// fmt.Print(path)
-			for _, directory := range directories {
-				commandPath := fmt.Sprintf("%s/%s", directory, arg)
-				if _, err := os.Stat(commandPath); !os.IsNotExist(err) {
-					executable = commandPath
-					break
-				}
+			if file.Name() == command {
+				execCommand(command, args)
+				return
 			}
-
-			// Fallthrough
-			if builtin {
-				fmt.Printf("%s is a shell builtin\n", arg)
-			} else if executable != "" {
-				fmt.Printf("%s is %s\n", arg, executable)
-			} else {
-				fmt.Printf("%s: not found\n", arg)
-			}
-
-		} else {
-			fmt.Println(command[:len(command)-1] + ": command not found")
 		}
 	}
-
+	commandNotFound(command)
+}
+func execCommand(command string, args []string) {
+	cmd := exec.Command(command, args...)
+	stdout, err := cmd.Output()
+	if err != nil {
+		fmt.Print(err.Error())
+	}
+	fmt.Print(string(stdout))
+}
+func commandNotFound(command string) {
+	fmt.Printf("%s: command not found\n", command)
+}
+func exit(args []string) {
+	if len(args) == 0 || len(args) > 1 {
+		os.Exit(0)
+	}
+	exitCode, err := strconv.ParseInt(args[0], 10, 32)
+	if err != nil {
+		os.Exit(0)
+	}
+	os.Exit(int(exitCode))
+}
+func echo(args []string) {
+	fmt.Printf("%s\n", strings.Join(args, " "))
+}
+func typeCommand(args []string) {
+	if len(args) == 0 {
+		return
+	}
+	// check if built-in
+	for _, command := range TYPE {
+		if command == args[0] {
+			fmt.Printf("%s is a shell builtin\n", command)
+			return
+		}
+	}
+	// check if in PATH
+	found := typeCommandInPath(args[0], args[1:])
+	if !found {
+		fmt.Printf("%s: not found\n", args[0])
+	}
+}
+func typeCommandInPath(command string, args []string) bool {
+	var pathDelimiter string
+	if runtime.GOOS == "windows" {
+		pathDelimiter = ";"
+	} else {
+		pathDelimiter = ":"
+	}
+	pathsEnv := os.Getenv("PATH")
+	paths := strings.Split(pathsEnv, pathDelimiter)
+	for _, path := range paths {
+		dir, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		defer dir.Close()
+		files, err := dir.Readdir(-1)
+		if err != nil {
+			continue
+		}
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			if file.Name() == command {
+				fmt.Printf("%s is %s/%s\n", command, path, command)
+				return true
+			}
+		}
+	}
+	return false
 }
